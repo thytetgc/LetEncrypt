@@ -1,0 +1,173 @@
+#!/bin/bash
+clear
+
+#Checa se o usuario é root
+LOCAL_USER=`id -u -n`
+
+if [ $LOCAL_USER != "root" ] ; then
+	echo "     Rodar como usuario root"
+	echo "     saindo..."
+	echo ""
+	exit
+fi
+	dir="Diretorio Atual		 : `pwd`"
+	hostname="Hostname			 : `hostname --fqdn`"
+	ip="IP						 : `ifconfig | awk 'NR>=2 && NR<=2' | awk '{print $3}'`"
+    versaoso="Versao S.O.		 : `lsb_release -d | cut -d : -f 2- | sed 's/^[ \t]*//;s/[ \t]*$//'`"
+	release="Release			 : `lsb_release -r | cut -d : -f 2- | sed 's/^[ \t]*//;s/[ \t]*$//'`"
+	codename="Codename			 : `lsb_release -c | cut -d : -f 2- | sed 's/^[ \t]*//;s/[ \t]*$//'`"
+	kernel="Kernel				 : `uname -r`"
+	arquitetura="Arquitetura	 : `uname -m`"
+	versaozimbra="Versao Zimbra : `su - zimbra -c 'zmcontrol -v'`"
+    echo "+-------------------------------------------------+"
+    echo "|           Utilitario para Zimbra                |"
+    echo "+-------------------------------------------------+"
+    echo "+-------------------------------------------------+"
+    echo "| Escrito por:                                    |"
+    echo "| Thiago Castro - www.hostlp.net                  |"
+    echo "+-------------------------------------------------+"
+    echo
+    echo $dir
+	echo "+-------------------------------------------------+"
+	echo $hostname
+	echo "+-------------------------------------------------+"
+	echo $ip
+	echo "+-------------------------------------------------+"
+	echo $versaoso
+	echo "+-------------------------------------------------+"
+	echo $release
+	echo "+-------------------------------------------------+"
+	echo $codename
+	echo "+-------------------------------------------------+"
+    echo $kernel
+	echo "+-------------------------------------------------+"
+    echo $arquitetura
+	echo "+-------------------------------------------------+"
+	echo $versaozimbra
+	echo "+-------------------------------------------------+"
+	echo
+	echo "Aperte <ENTER> para continuar e começar..."
+	read 
+	sleep 5
+	echo
+	echo "==================EXECUTANDO======================="
+	echo
+	
+#Variavel
+UsrZ="su - zimbra -c"
+
+#Abrindo porta 80
+echo "Abrindo Porta 80..."
+iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+	 echo "+-------------------------------------------------+OK"
+
+echo "Deseja instalar LetsEncrypt? - Sim/Nao"
+read CONFIRMA
+case $CONFIRMA in
+s|S|Sim|sim)	 
+#Baixa/Atualiza o LetsEncrypt
+echo "Baixa/Atualiza o LetsEncrypt..."
+cd 
+git clone https://github.com/letsencrypt/letsencrypt
+	 echo "+-------------------------------------------------+OK"
+		;;
+n|N|Nao|nao)
+		;;
+*) echo  "Opcao Invalida" ;; esac
+
+#Fazendo Backup de Certificados
+echo "Fazendo Backup de Certificados..."
+mkdir /tmp/archive.$(date "+%Y%m%d") 1&> /dev/null
+mkdir /tmp/live.$(date "+%Y%m%d") 1&> /dev/null
+mkdir /tmp/renewal.$(date "+%Y%m%d") 1&> /dev/null
+mv -f /etc/letsencrypt/archive/* /tmp/archive.$(date "+%Y%m%d") 1&> /dev/null
+mv -f /etc/letsencrypt/live/* /tmp/live.$(date "+%Y%m%d") 1&> /dev/null
+mv -f /etc/letsencrypt/renewal/* /tmp/renewal.$(date "+%Y%m%d") 1&> /dev/null
+	 echo "+-------------------------------------------------+OK"
+
+#Parando alguns seviços
+echo "Parando alguns serviços..."
+$UsrZ 'zmproxyctl stop'
+$UsrZ 'zmmailboxdctl stop'
+	 echo "+-------------------------------------------------+OK"
+
+#Gerando Certificado
+echo "Gerando Certificado..."
+cd ; cd letsencrypt
+DOMAINS=`su - zimbra -c 'zmprov gad'`
+for DOMAIN in $DOMAINS; do
+        ./letsencrypt-auto certonly --standalone -d `hostname --fqdn` -d mail.$DOMAIN -d webmail.$DOMAIN -d smtp.$DOMAIN -d pop.$DOMAIN -d imap.$DOMAIN
+done
+	 echo "+-------------------------------------------------+OK"
+
+#Baixando e mesclando certificados
+echo "Baixando e mesclando certificados..."
+wget -N https://raw.githubusercontent.com/thytetgc/LetEncrypt/master/cert_letsencrypt 1&> /dev/null
+cat cert_letsencrypt >> /etc/letsencrypt/live/`hostname --fqdn`/chain.pem
+	 echo "+-------------------------------------------------+OK"
+
+	echo "Verifique se deu tudo certo até aqui..."
+	echo 
+	echo 
+	echo "Aperte <ENTER> para continuar..."
+	read 
+	sleep 3
+	echo
+	echo "==================EXECUTANDO======================="
+	 
+#Cria, copia e da permissão
+echo "Cria, copia e da permissão..."
+mkdir /opt/zimbra/ssl/letsencrypt 1&> /dev/null
+cp /etc/letsencrypt/live/`hostname --fqdn`/* /opt/zimbra/ssl/letsencrypt/
+chown zimbra:zimbra /opt/zimbra/ssl/letsencrypt/*
+	 echo "+-------------------------------------------------+OK"
+	 
+#Copia os certificados para o Zimbra
+echo "Copia os certificados para o Zimbra..."
+$UsrZ 'cd /opt/zimbra/ssl/letsencrypt/'
+$UsrZ 'cd /opt/zimbra/ssl/letsencrypt/ ; /opt/zimbra/bin/zmcertmgr verifycrt comm privkey.pem cert.pem chain.pem'
+$UsrZ 'mv -f /opt/zimbra/ssl/zimbra.$(date "+%Y%m%d") /tmp/ ; cp -rf /opt/zimbra/ssl/zimbra /opt/zimbra/ssl/zimbra.$(date "+%Y%m%d")'
+$UsrZ 'mv -f /opt/zimbra/ssl/zimbra/commercial/commercial.key /tmp ; cp -rf /opt/zimbra/ssl/letsencrypt/privkey.pem /opt/zimbra/ssl/zimbra/commercial/commercial.key'
+$UsrZ 'cd /opt/zimbra/ssl/letsencrypt/ ; /opt/zimbra/bin/zmcertmgr deploycrt comm cert.pem chain.pem'
+	 echo "+-------------------------------------------------+OK"
+
+#Fechando porta 80
+echo "Fechando Porta 80..."
+iptables -D INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+/opt/rc.firewall 1&> /dev/null
+	 echo "+-------------------------------------------------+OK"
+
+#Inicia os serviços
+echo "Inicia os serviços..."
+$UsrZ 'zmproxyctl start'
+$UsrZ 'zmmailboxdctl start'
+$UsrZ 'zmtlsctl redirect'
+	 echo "+-------------------------------------------------+OK"
+
+#Reinicia Zimbra
+	echo
+	echo
+	echo "Aperte <ENTER> para reiniciar o Zimbra..."
+	read 
+	sleep 5
+	echo
+	echo "===================PARANDO========================"
+	echo
+	echo "Parando o Zimbra"
+$UsrZ 'zmcontrol stop'
+	echo "+-------------------------------------------------+OK"
+	echo
+	echo
+	echo "Aperte <ENTER> para Iniciar o Zimbra..."
+	read 
+	sleep 5
+	echo
+	echo "==================INICIANDO======================="
+	echo
+	echo "Iniciando o Zimbra"
+$UsrZ 'zmcontrol start'
+	echo "+-------------------------------------------------+OK"
+	echo
+	echo "Status do Zimbra"
+$UsrZ 'zmcontrol status'
+	echo "+-------------------------------------------------+OK"
