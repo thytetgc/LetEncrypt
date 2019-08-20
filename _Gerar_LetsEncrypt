@@ -96,7 +96,7 @@ echo "Gerando Certificado..."
 cd ; cd letsencrypt
 DOMAINS=`su - zimbra -c 'zmprov gad'`
 for DOMAIN in $DOMAINS; do
-        ./letsencrypt-auto certonly --standalone -d `hostname --fqdn` -d mail.$DOMAIN -d webmail.$DOMAIN -d smtp.$DOMAIN -d pop.$DOMAIN -d imap.$DOMAIN
+        ./letsencrypt-auto certonly --standalone -d `hostname --fqdn` --expand -d mail.$DOMAIN -d webmail.$DOMAIN -d smtp.$DOMAIN -d pop.$DOMAIN -d imap.$DOMAIN
 done
 	 echo "+-------------------------------------------------+OK"
 
