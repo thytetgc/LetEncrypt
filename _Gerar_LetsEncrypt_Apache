@@ -1,0 +1,179 @@
+#!/bin/bash
+clear 2>/dev/null/
+
+#Checa se o usuario é root
+LOCAL_USER=`id -u -n`
+
+if [ $LOCAL_USER != "root" ] ; then
+	echo "     Rodar como usuario root"
+	echo "     saindo..."
+	echo ""
+	exit
+fi
+Principal() {
+     dir="Diretorio Atual		 : `pwd`"
+	 hostname="Hostname			 : `hostname --fqdn`"
+	 ip="IP						 : `ifconfig | awk 'NR>=2 && NR<=2' | awk '{print $3}'`"
+     versaoso="Versao S.O.		 : `lsb_release -d | cut -d : -f 2- | sed 's/^[ \t]*//;s/[ \t]*$//'`"
+	 release="Release			 : `lsb_release -r | cut -d : -f 2- | sed 's/^[ \t]*//;s/[ \t]*$//'`"
+	 codename="Codename			 : `lsb_release -c | cut -d : -f 2- | sed 's/^[ \t]*//;s/[ \t]*$//'`"
+	 kernel="Kernel				 : `uname -r`"
+	 arquitetura="Arquitetura	 : `uname -m`"
+     echo "+-------------------------------------------------+"
+     echo "|       Utilitario para LetsEncrypt    v1.2       |"
+     echo "+-------------------------------------------------+"
+     echo "| Exportar / Importar Dados do LetsEncrypt        |"
+     echo "+-------------------------------------------------+"
+     echo "| Escrito por:                                    |"
+     echo "| Thiago Castro - www.hostlp.cloud                |"
+     echo "+-------------------------------------------------+"
+     echo
+     echo $dir
+	 echo "+-------------------------------------------------+"
+	 echo $hostname
+	 echo "+-------------------------------------------------+"
+	 echo $ip
+	 echo "+-------------------------------------------------+"
+	 echo $versaoso
+	 echo "+-------------------------------------------------+"
+	 echo $release
+	 echo "+-------------------------------------------------+"
+	 echo $codename
+	 echo "+-------------------------------------------------+"
+     echo $kernel
+	 echo "+-------------------------------------------------+"
+     echo $arquitetura
+	 echo "+-------------------------------------------------+"
+	 echo
+     echo
+     echo "Opcoes:"
+     echo "1. Instalar Certbot"
+	 echo "2. Gerar Certificado Novo"
+	 echo "3. Verificar Renovacao Agendada"
+	 echo "4. Renovar Certificado"
+	 echo "5. Revogar Certificado"
+	 echo "6. Deletar Certificado"
+	 echo
+     echo "7. Sair"
+	 echo
+	 echo
+     echo -n "Entre com a opcao desejada => "
+     read opcao
+     echo
+     case $opcao in
+        1) Instalar ;;
+		2) NewCert ;;
+		3) RenewAgend ;;
+		4) Renew ;;
+		5) Revogar ;;
+		6) Deletar ;;
+        7) exit ;;
+        *) "Opcao desconhecida." ; echo ; Principal ;;
+     esac
+}
+
+Instalar() {
+	# Instalar Certbot
+	echo "Instalando Certbot"
+	echo
+	sudo apt-get install software-properties-common
+	sudo add-apt-repository universe
+	sudo add-apt-repository ppa:certbot/certbot
+	sudo apt-get update
+	sudo apt-get install certbot python-certbot-apache -y
+		 echo "+-------------------------------------------------+OK"
+	echo
+    echo "Pressione qualquer tecla para continuar..."
+    read msg
+    Principal
+}
+  
+NewCert() {
+	# Gerar novo Certificado
+	echo "Gerando novo Certificado"
+	echo "Digitar -d para cada FQDN adicional por ex: site.hostlp.net -d site2.hostlp.net"
+	echo -n
+	read DOM
+	echo
+	iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+	/etc/init.d/apache2 stop 1&> /dev/null
+#	mkdir /tmp/archive.$(date "+%Y%m%d") 1&> /dev/null
+#	mkdir /tmp/live.$(date "+%Y%m%d") 1&> /dev/null
+#	mkdir /tmp/renewal.$(date "+%Y%m%d") 1&> /dev/null
+#	mv -f /etc/letsencrypt/archive/* /tmp/archive.$(date "+%Y%m%d") 1&> /dev/null
+#	mv -f /etc/letsencrypt/live/* /tmp/live.$(date "+%Y%m%d") 1&> /dev/null
+#	mv -f /etc/letsencrypt/renewal/* /tmp/renewal.$(date "+%Y%m%d") 1&> /dev/null
+	mkdir -p /etc/apache2.$(date "+%Y%m%d") 1&> /dev/null
+	cp -f /etc/apache2/* /etc/apache2.$(date "+%Y%m%d") 1&> /dev/null
+	/etc/init.d/apache2 start 1&> /dev/null
+	sudo certbot --apache -d $DOM
+	/etc/init.d/apache2 restart 1&> /dev/null
+	iptables -D INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+		 echo "+-------------------------------------------------+OK"
+	echo
+    echo "Pressione qualquer tecla para continuar..."
+    read msg
+    Principal
+}
+
+RenewAgend() {
+	# Verificar se a renovacao esta agendada
+	echo "Verificando a renovacao agendada"
+	echo
+	sudo certbot renew --dry-run
+	/etc/init.d/apache2 restart 1&> /dev/null
+		 echo "+-------------------------------------------------+OK"
+	echo
+    echo "Pressione qualquer tecla para continuar..."
+    read msg
+    Principal
+}
+
+Renew() {
+	# Renovar Certificado
+	echo "Renovado Certificado"
+	echo
+	iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+	sudo certbot renew --dry-run --agree-tos
+	echo
+	    echo "Se deu tudo certo até aqui, pressione ENTER para continuar..."
+	    read msg
+	sudo certbot renew --force-renewal
+	/etc/init.d/apache2 restart 1&> /dev/null
+	iptables -D INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+		 echo "+-------------------------------------------------+OK"
+	echo
+    echo "Pressione qualquer tecla para continuar..."
+    read msg
+    Principal
+}
+
+Revogar() {
+	# Revogar Certificado
+	echo "Revogando Certificado"
+	echo "Digitar cada FQDN antecedendo de -d por ex: -d site.hostlp.net -d site2.hostlp.net"
+	echo -n
+	read DOMAIN
+	echo
+	certbot revoke $DOMAIN --cert-path /etc/letsencrypt/live/`hostname --fqdn`/cert.pem
+	/etc/init.d/apache2 restart 1&> /dev/null
+		 echo "+-------------------------------------------------+OK"
+	echo
+    echo "Pressione qualquer tecla para continuar..."
+    read msg
+    Principal
+}
+
+Deletar() {
+	# Deletar Certificado
+	echo "Deletando Certificado"
+	echo
+	certbot delete
+	/etc/init.d/apache2 restart 1&> /dev/null
+		 echo "+-------------------------------------------------+OK"
+	echo
+    echo "Pressione qualquer tecla para continuar..."
+    read msg
+    Principal
+}
+Principal
